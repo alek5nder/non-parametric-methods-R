@@ -1,0 +1,362 @@
+---
+title: "Zadanie 1"
+author: "Aleksander Jasiński"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true 
+    number_sections: true 
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(gridExtra)
+```
+### Część I: Określenie kluczowych parametrów i założeń (zajęcia)
+
+H0: *m=0.5*
+H1: *m!=0*
+```{r}
+set.seed(123)
+alfa <- 0.05
+s <- 1
+m <- 0.5
+n <- 10
+```
+Sprawdźmy **moc testu**, czyli prawdopodobieństwo, że odrzucimy hipoteze zerową, gdy jest ona fałszywa. 
+
+
+1. Losujemy 10 obserwacji z rozkładu N(m, s)
+```{r}
+los <- rnorm(n,m,s)
+los
+```
+
+2. Przeprowadzamy test t dla średniej
+
+
+```{r}
+t.test(los)
+
+
+```
+Wartość `p-value` jest większa od przyjętego poziomu istotności, a więc nie ma podstaw do odrzucenia hipotezy zerowej. Przejdźmy dalej.
+
+
+3. Powtarzam krok 1-2 1000 razy
+```{r}
+
+N <- 1000
+los <- replicate(N, rnorm(n,m,s)) 
+odrzucone_H0 <- 0 
+
+for (i in 1:N) {
+  test <- t.test(los[, i])
+  if (test$p.value < alfa) {
+    odrzucone_H0 <- odrzucone_H0 + 1 
+  }
+}
+
+wynik_norm <- odrzucone_H0/N
+wynik_norm
+
+```
+W przybliżona wartość mocu testu wynosi **30%**. Czyli w 30% przypadków test poprawnie odrzuci hipotezę zerową, gdy jest ona fałszywa.
+
+4. Narysujmy wykres krzywej mocy dla zmieniających się wartości średniej rzeczywistej `mu`
+
+```{r}
+mu <- seq(-2,2,by=0.1)
+wynik_moc<-numeric(length(mu))
+for(l in 1:length(mu))
+{
+  odrzucone_H0 <- 0 
+  nieodrzucone_H0 <- 0  
+  srednia<-mu[l]
+  for (i in 1:N) {
+  los <- rnorm(n,srednia,s)
+  test <- t.test(los)
+  if (test$p.value < alfa) {
+    odrzucone_H0 <- odrzucone_H0 + 1 
+  } else {
+    nieodrzucone_H0 <- nieodrzucone_H0 + 1 
+  }
+  }
+  wynik_moc[l]<-odrzucone_H0/N
+}
+wykres1 <- data.frame(mu, wynik_moc)
+p1 <- ggplot(wykres1, aes(mu, wynik_moc))+
+  geom_line(color="blue")+
+  xlab("Rzeczywista średnia (mu)")+
+  ylab("Moc testu")+
+  ggtitle("Krzywa mocy a średnia rzeczywista")
+p1
+```
+
+Wykres **krzywej mocy testu** przypomina lejek. Moc testu jest tym mniejsza, im bardziej nasza średnia rzeczywista jest zbliżona do wartości oczekiwanej z populacji (przyjętej 0). Dla wartości skrajnych tj. `0.5` oraz `0.5` rośnie prawdopodobieństwo odrzucenia H0, gdy jest ona fałszywa.
+ 
+ 
+### Część II: Sprawdzam zmienność wyniki testu w zależności od alfy
+
+Przypisuje do zmiennj `alfy` poszczególne wartości poziomu istotności, a następnie sprawdzam *moc testu* w zależności od jej wartości. Dodatkowo "resetuje" wartość `odrzucone_H0` oraz `nieodrzucone_H0`.
+```{r}
+af <- c( 0.01, 0.05, 0.1, 0.2)
+wielkosc_mocy <- expand.grid(mu = mu, alfa = af)
+wielkosc_mocy$moc <- NA
+
+for (k in 1:length(af)) {
+  for (l in 1:length(mu)) {
+    odrzucone_H0 <- 0 
+    
+    for (i in 1:N) {
+      los <- rnorm(n, mu[l], s)
+      test <- t.test(los)
+      if (test$p.value < af[k]) {
+        odrzucone_H0 <- odrzucone_H0 + 1 
+      }
+      
+    }
+    
+    wielkosc_mocy$moc[wielkosc_mocy$mu == mu[l] & wielkosc_mocy$alfa == af[k]] <- odrzucone_H0 / N
+
+  }
+}
+
+p2 <- ggplot(wielkosc_mocy, aes(x = mu, y = moc, color = factor(alfa))) +
+  geom_line() +
+  xlab("Rzeczywista średnia (mu)") +
+  ylab("Moc testu") +
+  ggtitle("Krzywa mocy w zależności od wartości alfa") +
+  scale_color_discrete(name = "Alfa")
+
+p2
+```
+```{r}
+moc_srednia <- aggregate(moc ~ alfa, data = wielkosc_mocy, mean)
+moc_p1 <- ggplot(moc_srednia, aes(x = factor(alfa), y = moc)) +
+  geom_bar(stat = "identity", fill = "steelblue", color = "black") +
+  labs(title = "Średnia moc testu a alfa",
+       x = "Poziom istotności (alfa)",
+       y = "Moc testu") +
+  theme_minimal()
+
+```
+
+
+
+**Wraz ze wzrostem poziomu istotności proporcja próbek, w których odrzucamy hipotezę zerową do próbek, w których jej nie odrzucamy rośnie, czyli:**
+
+*Im niższa wartość alfa (np. 0.01), tym moc testu jest niższa, co oznacza większe prawdopodobieństwo popełnienia błędu II rodzaju*
+
+
+
+### Część III: Wpływ liczebności próby
+
+Przypisuje do zmiennej `licznosc` poszczególne wielkości próby, a następnie sprawdzam *moc testu* w zależności od wielkości.Dodatkowo "resetuje" wartość `odrzucone_H0` oraz `nieodrzucone_H0`.
+
+```{r}
+licznosc <- c(10, 20, 50, 100,500)
+wielkosc_mocy2 <- expand.grid(mu = mu, n = licznosc)
+wielkosc_mocy2$moc <- NA
+
+for (k in 1:length(licznosc)) {
+  for (l in 1:length(mu)) {
+    odrzucone_H0 <- 0 
+    
+    for (i in 1:N) {
+      los <- rnorm(licznosc[k], mu[l], s)
+      test <- t.test(los)
+      if (test$p.value < alfa) {
+        odrzucone_H0 <- odrzucone_H0 + 1 
+      }
+    }
+    
+    wielkosc_mocy2$moc[wielkosc_mocy2$mu == mu[l] & wielkosc_mocy2$n == licznosc[k]] <- odrzucone_H0 / N
+  }
+}
+p3 <- ggplot(wielkosc_mocy2, aes(x = mu, y = moc, color = factor(n))) +
+  geom_line() +
+  xlab("Rzeczywista średnia (mu)") +
+  ylab("Moc testu") +
+  ggtitle("Krzywa mocy w zależności od wielkości próbki") +
+  scale_color_discrete(name = "Wielkość próbki")
+
+p3
+```
+
+```{r}
+moc_licznosc <- aggregate(moc ~ n, data = wielkosc_mocy2, mean)
+
+moc_p2 <- ggplot(moc_licznosc, aes(x = factor(n), y = moc)) +
+  geom_bar(stat = "identity", fill = "lightgreen", color = "black") +
+  labs(title = "Średnia moc testu a licznosc",
+       x = "Licznosc probki",
+       y = "Moc testu") +
+  theme_minimal()
+
+```
+
+
+
+
+
+- **W miarę zwiększania się liczności próbki (np. N=100, N=500), moc testu rośnie**, co oznacza, że test lepiej wykrywa rzeczywiste różnice w średnich.
+- Krzywe dla większych próbek są bardziej strome i szybciej osiągają wartość bliską 1.
+- Dla małych próbek dopiero duże wartości `mu` powodują wzrost mocy testu.
+
+
+
+### Część IV: wpływ rozkładu zmiennej.
+1. Sprawdźmy wynik naszego testu dla rozkładu jednostajnego. Przymijmy założenia z **Część I**.
+```{r}
+min <- -0.5
+max <- 0.5
+N <- 1000
+n <- 10
+alfa <- 0.05
+
+wielkosc_mocy <- data.frame(mu = mu, moc = NA)
+
+for (l in 1:length(mu)) {
+  odrzucone_H0 <- 0 
+  
+  for (i in 1:N) {
+    los <- runif(n, min + mu[l], max + mu[l])
+    test <- t.test(los)
+    if (test$p.value < alfa) {
+      odrzucone_H0 <- odrzucone_H0 + 1 
+    }
+  }
+  
+  wielkosc_mocy$moc[l] <- odrzucone_H0 / N
+}
+
+
+p4 <- ggplot(wielkosc_mocy, aes(x = mu, y = moc)) +
+  geom_line(color = "blue") +
+  xlab("Rzeczywista średnia (mu)") +
+  ylab("Moc testu") +
+  ggtitle("Krzywa mocy (rozkład jednostajny)")
+
+p4
+
+```
+
+Założenie o normalności naszego rozkładu nie zostało spełnione. Wynik mocy testu około 0.05 wskazuje na niską moc testu. w większości przypadków nie wykrywa różnic, jeśli one istnieją
+
+
+2. Moc testu a rozkład bimodalny
+```{r}
+
+N <- 1000
+n <- 10
+los <- replicate(N, rbinom(n, 10, 0.5))
+odrzucone_H0 <- 0 
+for (i in 1:N) {
+  test <- t.test(los[, i], mu=5)
+  if (test$p.value < alfa) {
+    odrzucone_H0 <- odrzucone_H0 + 1
+  }
+}
+wynik_bimodal <- odrzucone_H0/N
+wynik_bimodal
+
+
+```
+Mamy niską wartość mocy testu, zbliżoną do 0.05.
+
+Próbki mają średnią bardzo zbliżoną do wartości oczekiwanej z populacji.
+
+3. Sprawdźmy rozkład `t-Studenta`
+
+Rozkład t-studenta wraz ze wzrostem stopni swobody przypomina rozkład normalny.
+
+```{r}
+wynik_moc <- numeric(length(mu))
+
+for (l in 1:length(mu)) {
+  odrzucone_H0 <- 0 
+
+  
+  for (i in 1:N) {
+    los <- rt(n, df=n-1) + mu[l]
+    test <- t.test(los)
+    
+    if (test$p.value < alfa) {
+      odrzucone_H0 <- odrzucone_H0 + 1 
+    }
+  }
+  
+  wynik_moc[l] <- odrzucone_H0 / N
+}
+
+wykres1 <- data.frame(mu, wynik_moc)
+p5 <- ggplot(wykres1, aes(mu, wynik_moc)) +
+  geom_line(color="blue") +
+  xlab("Rzeczywista średnia (mu)") +
+  ylab("Moc testu") +
+  ggtitle("Krzywa mocy a średnia rzeczywista - rozkład t-Studenta")
+
+p5
+
+```
+
+
+Test t-Studenta jest stosunkowo odporny na niewielkie odstępstwa od normalności, dlatego *działa dobrze w tym przypadku*. Moc testu jest najwyższa dla wartości rzeczywistej średniej `mu`daleko od 0.
+
+
+
+
+```{r}
+grid.arrange( p1,p4, p5,ncol=2)
+```
+
+
+#### Wnioski:
+
+- Test t-Studenta działa najlepiej dla danych pochodzących z rozkładu normalnego lub t-Studenta.
+- W przypadku rozkładu jednostajnego test traci moc szybciej
+
+
+**Moc testu zależy nie tylko od wartości rzeczywistej średniej, ale także od kształtu rozkładu z którego pochodzą dane.**
+
+
+
+### Część V: wizualiacja wpływu poszczególnych czynników.
+
+Spójrzmy jeszcze raz na poszczególne wykresy, które pojawiły się w trakcie mojej pracy.
+
+
+```{r}
+grid.arrange(moc_p1,moc_p2,ncol=2)
+```
+
+
+- **Wyższa alfa** (kosztem większego ryzyka I rodzaju!!) oznacza większą skłonność do odrzucania hipotezy zerowej, co zwiększa prawdopodobieństwo wykrycia efektu, jeśli rzeczywiście istnieje.
+
+- Przy **małych próbkach** test statystyczny może mieć niską moc, co oznacza większe prawdopodobieństwo popełnienia błędu II rodzaju
+
+
+
+```{r}
+norm_vs_bimod <- data.frame(rozklad=c("normalny","bimodalny"),moc=c(wynik_norm,wynik_bimodal))
+
+ggplot(norm_vs_bimod, aes(x = rozklad, y = moc, fill = rozklad)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Porównanie mocy testu dla różnych rozkładów",
+       x = "Rodzaj rozkładu",
+       y = "Moc testu") +
+  ylim(0,1)+
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+Test statystyczny **lepiej wykrywa efekt w próbkach pochodzących z rozkładu normalnego** w porównaniu do rozkładu bimodalnego.
+
+W praktyce oznacza to, że stosowanie testu na danych z rozkładu bimodalnego może prowadzić do dużej liczby błędów drugiego rodzaju. Właśnie dlatego założenia o normalności rozkładu, z którego pochodzi nasza próbka jest kluczowe.
+
+
