@@ -21,8 +21,7 @@ The goal is to provide clear, reproducible examples and visual insights into how
 ## Repository Structure
 
 - `src/` – R scripts with the core simulations and plots (`.R` files)
-- `report.Rmd` – R Markdown file with a detailed report and narrative (optional)
-- `assets/` – generated plots and related media (optional)
+- `report.Rmd` – R Markdown file with a detailed report and narrative
 - `README.md` – this file
 
 ---
